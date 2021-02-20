@@ -27,8 +27,8 @@ package jodd.db.pool;
 
 import jodd.db.DbSqlException;
 import jodd.db.connection.ConnectionProvider;
-import jodd.log.Logger;
-import jodd.log.LoggerFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -61,7 +61,6 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 	private long validationTimeout = 18000000L;		// 5 hours
 	private String validationQuery;
 
-
 	public String getDriver() {
 		return driver;
 	}
@@ -69,7 +68,7 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 	/**
 	 * Specifies driver class name.
 	 */
-	public void setDriver(String driver) {
+	public void setDriver(final String driver) {
 		this.driver = driver;
 	}
 
@@ -80,7 +79,7 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 	/**
 	 * Specifies JDBC url.
 	 */
-	public void setUrl(String url) {
+	public void setUrl(final String url) {
 		this.url = url;
 	}
 
@@ -91,7 +90,7 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 	/**
 	 * Specifies db username.
 	 */
-	public void setUser(String user) {
+	public void setUser(final String user) {
 		this.user = user;
 	}
 
@@ -102,7 +101,7 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 	/**
 	 * Specifies db password.
 	 */
-	public void setPassword(String password) {
+	public void setPassword(final String password) {
 		this.password = password;
 	}
 
@@ -113,7 +112,7 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 	/**
 	 * Sets max number of connections.
 	 */
-	public void setMaxConnections(int maxConnections) {
+	public void setMaxConnections(final int maxConnections) {
 		this.maxConnections = maxConnections;
 	}
 
@@ -124,7 +123,7 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 	/**
 	 * Sets minimum number of open connections.
 	 */
-	public void setMinConnections(int minConnections) {
+	public void setMinConnections(final int minConnections) {
 		this.minConnections = minConnections;
 	}
 
@@ -137,7 +136,7 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 	 * is available. If wait for busy is <code>false</code>
 	 * exception will be thrown when max connection is reached.
 	 */
-	public void setWaitIfBusy(boolean waitIfBusy) {
+	public void setWaitIfBusy(final boolean waitIfBusy) {
 		this.waitIfBusy = waitIfBusy;
 	}
 
@@ -149,7 +148,7 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 	 * Specifies number of milliseconds from connection creation
 	 * when connection is considered as opened and valid.
 	 */
-	public void setValidationTimeout(long validationTimeout) {
+	public void setValidationTimeout(final long validationTimeout) {
 		this.validationTimeout = validationTimeout;
 	}
 
@@ -162,7 +161,7 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 	 * If set to <code>null</code> validation will be performed
 	 * by invoking <code>Connection#isClosed</code> method.
 	 */
-	public void setValidationQuery(String validationQuery) {
+	public void setValidationQuery(final String validationQuery) {
 		this.validationQuery = validationQuery;
 	}
 
@@ -180,7 +179,7 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 	/**
 	 * Specifies if connections should be validated before returned.
 	 */
-	public void setValidateConnection(boolean validateConnection) {
+	public void setValidateConnection(final boolean validateConnection) {
 		this.validateConnection = validateConnection;
 	}
 
@@ -188,32 +187,41 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 
 	private ArrayList<ConnectionData> availableConnections, busyConnections;
 	private boolean connectionPending;
+	private boolean initialised;
 
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public synchronized void init() {
+		if (initialised) {
+			return;
+		}
 		if (log.isInfoEnabled()) {
 			log.info("Core connection pool initialization");
 		}
 		try {
 			Class.forName(driver);
-		} catch (ClassNotFoundException cnfex) {
+		}
+		catch (final ClassNotFoundException cnfex) {
 			throw new DbSqlException("Database driver not found: " + driver, cnfex);
 		}
+
 		if (minConnections > maxConnections) {
 			minConnections = maxConnections;
 		}
 		availableConnections = new ArrayList<>(maxConnections);
 		busyConnections = new ArrayList<>(maxConnections);
+
 		for (int i = 0; i < minConnections; i++) {
 			try {
-				Connection conn = DriverManager.getConnection(url, user, password); 
+				final Connection conn = DriverManager.getConnection(url, user, password);
 				availableConnections.add(new ConnectionData(conn));
-			} catch (SQLException sex) {
+			} catch (final SQLException sex) {
 				throw new DbSqlException("No database connection", sex);
 			}
 		}
+		initialised = true;
 	}
 
 	// ---------------------------------------------------------------- get/close
@@ -221,20 +229,21 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public synchronized Connection getConnection() {
 		if (availableConnections == null) {
 			throw new DbSqlException("Connection pool is not initialized");
 		}
 		if (!availableConnections.isEmpty()) {
-			int lastIndex = availableConnections.size() - 1;
-			ConnectionData existingConnection = availableConnections.get(lastIndex);
+			final int lastIndex = availableConnections.size() - 1;
+			final ConnectionData existingConnection = availableConnections.get(lastIndex);
 			availableConnections.remove(lastIndex);
 			
 			// If conn on available list is closed (e.g., it timed out), then remove it from available list
 			// and repeat the process of obtaining a conn. Also wake up threads that were waiting for a
 			// conn because maxConnection limit was reached.
-			long now = System.currentTimeMillis();
-			boolean isValid = isConnectionValid(existingConnection, now);
+			final long now = System.currentTimeMillis();
+			final boolean isValid = isConnectionValid(existingConnection, now);
 			if (!isValid) {
 				if (log.isDebugEnabled()) {
 					log.debug("Pooled connection not valid, resetting");
@@ -266,7 +275,7 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 		// an existing conn to be freed up.
 		try {
 			wait();
-		} catch (InterruptedException ie) {
+		} catch (final InterruptedException ie) {
 			// ignore
 		}
 		// someone freed up a conn, so try again.
@@ -278,7 +287,7 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 	 * that if connection is not used for a while it becomes inactive,
 	 * although not technically closed.
 	 */
-	private boolean isConnectionValid(ConnectionData connectionData, long now) {
+	private boolean isConnectionValid(final ConnectionData connectionData, final long now) {
 		if (!validateConnection) {
 			return true;
 		}
@@ -287,12 +296,12 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 			return true;
 		}
 
-		Connection conn = connectionData.connection;
+		final Connection conn = connectionData.connection;
 
 		if (validationQuery == null) {
 			try {
 				return !conn.isClosed();
-			} catch (SQLException sex) {
+			} catch (final SQLException sex) {
 				return false;
 			}
 		}
@@ -302,13 +311,13 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 		try {
 			st = conn.createStatement();
 			st.execute(validationQuery);
-		} catch (SQLException sex) {
+		} catch (final SQLException sex) {
 			valid = false;
 		} finally {
 			if (st != null) {
 				try {
 					st.close();
-				} catch (SQLException ignore) {
+				} catch (final SQLException ignore) {
 				}
 			}
 		}
@@ -324,25 +333,27 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 	 */
 	private void makeBackgroundConnection() {
 		connectionPending = true;
-		Thread connectThread = new Thread(this);
+		final Thread connectThread = new Thread(this);
 		connectThread.start();
 	}
 
+	@Override
 	public void run() {
 		try {
-			Connection connection = DriverManager.getConnection(url, user, password);
+			final Connection connection = DriverManager.getConnection(url, user, password);
 			synchronized(this) {
 				availableConnections.add(new ConnectionData(connection));
 				connectionPending = false;
 				notifyAll();
 			}
-		} catch (Exception ex) {
+		} catch (final Exception ex) {
 			// give up on new conn and wait for existing one to free up.
 		}
 	}
 
-	public synchronized void closeConnection(Connection connection) {
-		ConnectionData connectionData = new ConnectionData(connection);
+	@Override
+	public synchronized void closeConnection(final Connection connection) {
+		final ConnectionData connectionData = new ConnectionData(connection);
 		busyConnections.remove(connectionData);
 		availableConnections.add(connectionData);
 		notifyAll();		// wake up threads that are waiting for a conn
@@ -358,6 +369,7 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 	 * closed when garbage collected. But this method gives more control
 	 * regarding when the connections are closed.
 	 */
+	@Override
 	public synchronized void close() {
 		if (log.isInfoEnabled()) {
 			log.info("Core connection pool shutdown");
@@ -368,15 +380,18 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 		busyConnections = new ArrayList<>(maxConnections);
 	}
 
-	private void closeConnections(ArrayList<ConnectionData> connections) {
+	private void closeConnections(final ArrayList<ConnectionData> connections) {
+		if (connections == null) {
+			return;
+		}
 		try {
-			for (ConnectionData connectionData : connections) {
-				Connection connection = connectionData.connection;
+			for (final ConnectionData connectionData : connections) {
+				final Connection connection = connectionData.connection;
 				if (!connection.isClosed()) {
 					connection.close();
 				}
 			}
-		} catch (SQLException sex) {
+		} catch (final SQLException ignore) {
 			// Ignore errors; garbage collect anyhow
 		}
 	}
@@ -390,20 +405,20 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 		final Connection connection;
 		long lastUsed;
 
-		ConnectionData(Connection connection) {
+		ConnectionData(final Connection connection) {
 			this.connection = connection;
 			this.lastUsed = System.currentTimeMillis();
 		}
 
 		@Override
-		public boolean equals(Object o) {
+		public boolean equals(final Object o) {
 			if (this == o) {
 				return true;
 			}
 			if (o == null || getClass() != o.getClass()) {
 				return false;
 			}
-			ConnectionData that = (ConnectionData) o;
+			final ConnectionData that = (ConnectionData) o;
 			return connection.equals(that.connection);
 		}
 
@@ -430,7 +445,7 @@ public class CoreConnectionPool implements Runnable, ConnectionProvider {
 		final int availableCount;
 		final int busyCount;
 
-		SizeSnapshot(int availableCount, int busyCount) {
+		SizeSnapshot(final int availableCount, final int busyCount) {
 			this.totalCount = availableCount + busyCount;
 			this.availableCount = availableCount;
 			this.busyCount = busyCount;
